@@ -1,0 +1,180 @@
+classDiagram
+    class Usuario {
+        -UUID id
+        -String nome
+        -String sobrenome
+        -String email
+        -String avatarUrl
+        -LocalDateTime dataCriacao
+        -LocalDateTime ultimaAtualizacao
+        +registrar(UsuarioDTO)
+        +atualizar(UUID, UsuarioDTO)
+        +obterPerfil(UUID)
+    }
+
+    class Conta {
+        -UUID id
+        -String nome
+        -BigDecimal saldoInicial
+        -BigDecimal saldoAtual
+        -UUID usuario1Id
+        -UUID usuario2Id
+        -LocalDateTime dataCriacao
+        -LocalDateTime ultimaAtualizacao
+        +criar(ContaDTO)
+        +atualizar(UUID, ContaDTO)
+        +obterDetalhe(UUID)
+        +obterSaldo(UUID)
+        +listarContasDoUsuario(UUID)
+        +adicionarParceiro(UUID, UUID)
+    }
+
+    class Transacao {
+        -UUID id
+        -String descricao
+        -BigDecimal valor
+        -LocalDate data
+        -TipoTransacao tipo
+        -String categoria
+        -UUID contaId
+        -UUID usuarioId
+        -LocalDateTime dataCriacao
+        -LocalDateTime ultimaAtualizacao
+        +criar(TransacaoDTO)
+        +atualizar(UUID, TransacaoDTO)
+        +remover(UUID)
+        +listar(UUID, Filtros)
+        +obterDetalhe(UUID)
+    }
+
+    class TipoTransacao {
+        <<enumeration>>
+        ENTRADA
+        SAIDA
+    }
+
+    class ResumoPeriodo {
+        -UUID contaId
+        -LocalDate dataInicio
+        -LocalDate dataFim
+        -BigDecimal totalEntradas
+        -BigDecimal totalSaidas
+        -BigDecimal saldoPeriodo
+        -Map~String, BigDecimal~ gastosPorCategoria
+        +calcular(UUID, LocalDate, LocalDate)
+    }
+
+    class FiltroTransacao {
+        -LocalDate dataInicio
+        -LocalDate dataFim
+        -TipoTransacao tipo
+        -String categoria
+        -UUID usuarioId
+        -String orderBy
+        -Boolean orderDesc
+    }
+
+    class UsuarioController {
+        -UsuarioService usuarioService
+        +registrar(UsuarioDTO)
+        +login(CredenciaisDTO)
+        +obterPerfil()
+        +atualizarPerfil(UsuarioDTO)
+    }
+
+    class ContaController {
+        -ContaService contaService
+        +criarConta(ContaDTO)
+        +listarContas()
+        +obterConta(UUID)
+        +atualizarConta(UUID, ContaDTO)
+        +adicionarParceiro(UUID, EmailDTO)
+    }
+
+    class TransacaoController {
+        -TransacaoService transacaoService
+        +criarTransacao(TransacaoDTO)
+        +listarTransacoes(UUID, FiltroTransacao)
+        +obterTransacao(UUID)
+        +atualizarTransacao(UUID, TransacaoDTO)
+        +removerTransacao(UUID)
+    }
+
+    class DashboardController {
+        -DashboardService dashboardService
+        +obterResumo(UUID, LocalDate, LocalDate)
+        +obterGraficoCategoria(UUID, LocalDate, LocalDate)
+        +obterGraficoEvolucao(UUID, LocalDate, LocalDate)
+    }
+
+    class UsuarioService {
+        -UsuarioRepository usuarioRepository
+        -PasswordEncoder passwordEncoder
+        -JwtTokenProvider tokenProvider
+        +registrar(UsuarioDTO)
+        +autenticar(CredenciaisDTO)
+        +obterPorId(UUID)
+        +atualizar(UUID, UsuarioDTO)
+        +verificarEmail(String)
+    }
+
+    class ContaService {
+        -ContaRepository contaRepository
+        -UsuarioRepository usuarioRepository
+        +criar(ContaDTO, UUID)
+        +atualizar(UUID, ContaDTO, UUID)
+        +obterPorId(UUID, UUID)
+        +listarContasDoUsuario(UUID)
+        +adicionarParceiro(UUID, String, UUID)
+        +verificarPermissao(UUID, UUID)
+    }
+
+    class TransacaoService {
+        -TransacaoRepository transacaoRepository
+        -ContaService contaService
+        +criar(TransacaoDTO, UUID)
+        +atualizar(UUID, TransacaoDTO, UUID)
+        +remover(UUID, UUID)
+        +listarPorConta(UUID, FiltroTransacao, UUID)
+        +obterPorId(UUID, UUID)
+    }
+
+    class DashboardService {
+        -TransacaoRepository transacaoRepository
+        -ContaService contaService
+        +calcularResumo(UUID, LocalDate, LocalDate, UUID)
+        +calcularGastosPorCategoria(UUID, LocalDate, LocalDate, UUID)
+        +calcularEvolucaoSaldo(UUID, LocalDate, LocalDate, UUID)
+    }
+
+    class JwtTokenProvider {
+        -String chaveSecreta
+        -long validade
+        +gerarToken(Authentication)
+        +obterIdUsuario(String)
+        +validarToken(String)
+    }
+    
+    class AuthenticationFilter {
+        -JwtTokenProvider tokenProvider
+        -UserDetailsService userDetailsService
+        +doFilterInternal(HttpServletRequest, HttpServletResponse, FilterChain)
+    }
+
+    Usuario --o Transacao : registra
+    Usuario "1" --o "*" Conta : possui
+    Conta "1" --o "*" Transacao : contém
+    Transacao -- TipoTransacao : é do tipo
+    
+    ResumoPeriodo --> Conta : calcula para
+    FiltroTransacao --> Transacao : filtra
+    
+    UsuarioController --> UsuarioService : usa
+    ContaController --> ContaService : usa
+    TransacaoController --> TransacaoService : usa
+    DashboardController --> DashboardService : usa
+    
+    UsuarioService --> JwtTokenProvider : usa
+    AuthenticationFilter --> JwtTokenProvider : usa
+    TransacaoService --> ContaService : usa
+    DashboardService --> ContaService : usa

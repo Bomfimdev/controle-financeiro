@@ -1,0 +1,107 @@
+sequenceDiagram
+    participant Cliente as Cliente (React)
+    participant Auth as AuthController
+    participant UserSvc as UsuarioService
+    participant JWT as JwtTokenProvider
+    participant ContaCtrl as ContaController
+    participant ContaSvc as ContaService
+    participant TransCtrl as TransacaoController
+    participant TransSvc as TransacaoService
+    participant DashCtrl as DashboardController
+    participant DashSvc as DashboardService
+    participant DB as Database
+    
+    %% Autenticação
+    Cliente->>Auth: POST /api/usuarios/login (email, senha)
+    Auth->>UserSvc: autenticar(credenciais)
+    UserSvc->>DB: buscarUsuarioPorEmail(email)
+    DB-->>UserSvc: usuario
+    UserSvc->>UserSvc: verificarSenha(senha, usuario.senha)
+    UserSvc->>JWT: gerarToken(usuario)
+    JWT-->>UserSvc: token JWT
+    UserSvc-->>Auth: tokenDTO (token, tipo, expiração, usuarioId)
+    Auth-->>Cliente: 200 OK (tokenDTO)
+    
+    %% Criação de Conta
+    Cliente->>ContaCtrl: POST /api/contas (nome, saldoInicial)
+    ContaCtrl->>ContaSvc: criar(contaDTO, usuarioId)
+    ContaSvc->>UserSvc: obterPorId(usuarioId)
+    UserSvc->>DB: findById(usuarioId)
+    DB-->>UserSvc: usuario
+    UserSvc-->>ContaSvc: usuario
+    ContaSvc->>DB: save(novaConta)
+    DB-->>ContaSvc: contaSalva
+    ContaSvc-->>ContaCtrl: contaResponseDTO
+    ContaCtrl-->>Cliente: 201 Created (contaResponseDTO)
+    
+    %% Adicionar Parceiro à Conta
+    Cliente->>ContaCtrl: POST /api/contas/{id}/parceiro (email)
+    ContaCtrl->>ContaSvc: adicionarParceiro(id, email, usuarioId)
+    ContaSvc->>ContaSvc: verificarPermissao(id, usuarioId)
+    ContaSvc->>DB: findById(id)
+    DB-->>ContaSvc: conta
+    ContaSvc->>UserSvc: obterPorEmail(email)
+    UserSvc->>DB: findByEmail(email)
+    DB-->>UserSvc: parceiro
+    UserSvc-->>ContaSvc: parceiro
+    ContaSvc->>DB: update(conta with usuario2Id=parceiro.id)
+    DB-->>ContaSvc: contaAtualizada
+    ContaSvc-->>ContaCtrl: contaResponseDTO
+    ContaCtrl-->>Cliente: 200 OK (contaResponseDTO)
+    
+    %% Criar Transação
+    Cliente->>TransCtrl: POST /api/transacoes (dados da transação)
+    TransCtrl->>TransSvc: criar(transacaoDTO, usuarioId)
+    TransSvc->>ContaSvc: verificarPermissao(contaId, usuarioId)
+    ContaSvc->>DB: findById(contaId)
+    DB-->>ContaSvc: conta
+    ContaSvc-->>TransSvc: permitido/negado
+    
+    alt Permissão concedida
+        TransSvc->>DB: save(novaTransacao)
+        DB->>DB: Trigger atualiza saldo da conta
+        DB-->>TransSvc: transacaoSalva
+        TransSvc-->>TransCtrl: transacaoResponseDTO
+        TransCtrl-->>Cliente: 201 Created (transacaoResponseDTO)
+    else Permissão negada
+        TransSvc-->>TransCtrl: AccessDeniedException
+        TransCtrl-->>Cliente: 403 Forbidden
+    end
+    
+    %% Listar Transações
+    Cliente->>TransCtrl: GET /api/transacoes?contaId=123&filtros...
+    TransCtrl->>TransSvc: listarPorConta(contaId, filtros, usuarioId)
+    TransSvc->>ContaSvc: verificarPermissao(contaId, usuarioId)
+    ContaSvc->>DB: findById(contaId)
+    DB-->>ContaSvc: conta
+    ContaSvc-->>TransSvc: permitido/negado
+    
+    alt Permissão concedida
+        TransSvc->>DB: findByConta(contaId, filtros)
+        DB-->>TransSvc: listaTransacoes
+        TransSvc-->>TransCtrl: listaTransacoesDTO
+        TransCtrl-->>Cliente: 200 OK (listaTransacoesDTO)
+    else Permissão negada
+        TransSvc-->>TransCtrl: AccessDeniedException
+        TransCtrl-->>Cliente: 403 Forbidden
+    end
+    
+    %% Visualizar Dashboard
+    Cliente->>DashCtrl: GET /api/dashboard/resumo?contaId=123&inicio=2023-01-01&fim=2023-01-31
+    DashCtrl->>DashSvc: calcularResumo(contaId, dataInicio, dataFim, usuarioId)
+    DashSvc->>ContaSvc: verificarPermissao(contaId, usuarioId)
+    ContaSvc->>DB: findById(contaId)
+    DB-->>ContaSvc: conta
+    ContaSvc-->>DashSvc: permitido/negado
+    
+    alt Permissão concedida
+        DashSvc->>DB: consultarTransacoes(contaId, dataInicio, dataFim)
+        DB-->>DashSvc: transacoesPeriodo
+        DashSvc->>DashSvc: calcularTotais(transacoesPeriodo)
+        DashSvc->>DashSvc: categorizarGastos(transacoesPeriodo)
+        DashSvc-->>DashCtrl: resumoResponseDTO
+        DashCtrl-->>Cliente: 200 OK (resumoResponseDTO)
+    else Permissão negada
+        DashSvc-->>DashCtrl: AccessDeniedException
+        DashCtrl-->>Cliente: 403 Forbidden
+    end
